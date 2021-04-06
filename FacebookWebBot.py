@@ -343,17 +343,25 @@ class FacebookBot(webdriver.Chrome):
         # print(len(members))
         return members
 
+
     def sendFriendRequest(self, url):
         """Send a friend request to a profile(str)"""
         self.get(url)
+
+        target_name = self.find_element_by_xpath('//*[@id="root"]/div[1]/div[1]/div[2]/div/span/div/span/strong').text
+        print("Sending Friend Request to {}".format(target_name))
+
         try:
-            bz = self.find_element_by_class_name("bz")
-            l = bz.get_attribute('href')
-            self.get(l)
-            return True
+            self.find_element_by_xpath('//*[@id="root"]/div[1]/div[1]/div[3]/table/tbody/tr/td[1]/a').click()
+            if(self.find_element_by_xpath('//*[@id="root"]/div[1]/div[1]/div[1]/div[1]/div/table/tbody/tr/td[1]/input').is_displayed()):
+                print("Friend Request Sent!")
+                return True
+            else:
+                print("Friend Request was not sent!")
+                return False
         except Exception:
-            # print("Can't add friend")
-            return False
+                print("Can't add friend")
+                return False
 
     def messageToUrl(self, url, text):
         """Message a profile/fanpage (str) with text(str)"""
