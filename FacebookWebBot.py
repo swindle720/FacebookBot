@@ -45,6 +45,43 @@ class Person():
         self.__str__()
 
 
+class post():
+    fbData = []
+
+    def __init__(self, data):
+        self.fbData = data
+
+    def Author(self):
+        return str(self.fbData['author'])
+
+    def AuthorURL(self):
+        return str(self.fbData['author_page'])
+
+    def Content(self):
+        return str(self.fbData['content'])
+
+    def Likes(self):
+        return int(self.fbData['likes'])
+
+    def Comments(self):
+        return int(self.fbData['comments'])
+
+    def storyURL(self):
+        return self.fbData['post_url'][0] or None
+
+    def handle(self):
+        if self.storyURL() is not None:
+            handle = re.search("(?!story_fbid=)[0-9]+", str(self.storyURL()))
+            return int(handle.group())
+        else:
+            return 0
+
+    def timestamp(self):
+        return int(self.fbData['timestamp'])
+
+    def data(self):
+        return self.fbData
+
 class Post():
     """Class to contain information about a post"""
 
@@ -103,7 +140,10 @@ dcap["phantomjs.page.settings.userAgent"] = (
 class FacebookBot(webdriver.Chrome):
     """Main class for browsing facebook"""
 
-    def __init__(self, executable_path):
+    myname = None
+
+    def __init__(self, executable_path, Name):
+        self.myname = Name
         # pathToPhantomJs ="
         """relativePhatomJs = "\\phantomjs.exe"
         service_args = None
@@ -137,6 +177,10 @@ class FacebookBot(webdriver.Chrome):
         pass_element.send_keys(password)
         pass_element.send_keys(Keys.ENTER)
 
+        if "feature at the moment" in self.find_element_by_xpath('//*[@id="objects_container"]/div[1]/h2').text:
+            print("[Error]: We have been Blocked by facebook!")
+            return False
+
         if self.find_element_by_xpath('//*[@id="root"]/table/tbody/tr/td/div/form').is_displayed():
             self.find_element_by_xpath('//*[@id="root"]/table/tbody/tr/td/div/form/div/input').click()
 
@@ -151,9 +195,11 @@ class FacebookBot(webdriver.Chrome):
     def logout(self):
         """Log out from Facebook"""
 
-        url = "https://mbasic.facebook.com/logout.php?h=AffSEUYT5RsM6bkY&t=1446949608&ref_component=mbasic_footer&ref_page=%2Fwap%2Fhome.php&refid=7"
+        if self.current_url != "https://mbasic.facebook.com/home.php":
+            self.get("https://mbasic.facebook.com/home.php")
+
         try:
-            self.get(url)
+            self.find_element_by_xpath('// *[ @ id = "mbasic_logout_button"]').click()
             return True
         except Exception as e:
             print("Failed to log out ->\n", e)
@@ -276,6 +322,80 @@ class FacebookBot(webdriver.Chrome):
         self.find_element_by_name("view_post").send_keys(Keys.ENTER)
         return True
 
+    def like(self, URL):
+        print("Liking Post")
+        if self.current_url != URL:
+            self.get(URL)
+
+        storyID = re.search("(?!story_fbid=)[0-9]+", str(self.current_url))
+
+        result = self.find_element_by_xpath('//*[@id="actions_{}"]/table/tbody/tr/td[1]/a'.format(storyID.group())).get_attribute("aria-pressed")
+        print(result)
+
+        if result == "false":
+            self.find_element_by_xpath('//*[@id="actions_{}"]/table/tbody/tr/td[1]/a'.format(storyID.group())).click()
+        else:
+            print("Already Liked")
+
+        return True
+
+    def Comment(self, URL, text):
+        print("Posting a comment..")
+        if self.current_url != URL:
+            self.get(URL)
+        ele = self.find_element_by_xpath('//*[@id="composerInput"]')
+        ele.send_keys(text)
+        self.implicitly_wait(1)
+        ele.submit()
+        return True
+
+    def GetMyTimeline(self):
+
+        if (self.current_url != "https://mbasic.facebook.com/home.php"):
+            self.get('https://mbasic.facebook.com/home.php')
+
+        print("Getting Post in timeline..")
+        posts = []
+
+        articles = self.find_elements_by_tag_name("article")
+        print("Found {} Public Posts.".format(len(articles)))
+
+        for article in articles:
+            footer_data = None
+            body_data = None
+
+            footer = article.find_elements_by_tag_name("footer")
+            header = article.find_elements_by_tag_name("header")
+            body = article.find_elements_by_class_name('dx')
+
+            if (len(body) > 0):
+                body_data = body[0].text
+
+            if (len(footer) > 0):
+                footer_data = footer[0].text
+
+
+            profile_URL = header[0].find_elements_by_tag_name('a')[0].get_attribute("href") or None
+
+            Footer_urls = []
+            for url in footer[0].find_elements_by_tag_name('a'):
+                if "story.php" in url.get_attribute("href"):
+                    Footer_urls.append(url.get_attribute("href"))
+
+            fdata = self.Footer_fit(footer_data)
+            DataList = {
+                        **{"author": header[0].text},
+                        **{"author_page": profile_URL},
+                        **{"content": body_data},
+                        **fdata,
+                        **{"post_url": Footer_urls or None}
+                        }
+
+            posts.append(post(DataList))
+
+        return posts
+
+
     def postImageInGroup(self, url, text, image1, image2="", image3=""):
         """Post image(str) in a group(url:str) with the text(str), doesn't work in phantomJS"""
         self.get(url)
@@ -346,7 +466,8 @@ class FacebookBot(webdriver.Chrome):
 
     def sendFriendRequest(self, url):
         """Send a friend request to a profile(str)"""
-        self.get(url)
+        if self.current_url != url:
+            self.get(url)
 
         target_name = self.find_element_by_xpath('//*[@id="root"]/div[1]/div[1]/div[2]/div/span/div/span/strong').text
         print("Sending Friend Request to {}".format(target_name))
@@ -434,29 +555,36 @@ class FacebookBot(webdriver.Chrome):
                     print("Fail to send request to: ", r)
         return g
 
-    def getPostInTimeline(self, profileURL):
+    def getPostInTimeline(self, profileURL=None):
         print("Getting Post in timeline..")
         posts = []
-        self.get(profileURL)
+
+        if profileURL is not None:
+            self.get(profileURL)
         articles = self.find_elements_by_tag_name("article")
         print("Found {} Public Posts.".format(len(articles)))
 
         for article in articles:
             footer_data = None
+            body_data = None
+            urls = None
 
             footer = article.find_elements_by_tag_name("footer")
             header = article.find_elements_by_tag_name("header")
             body = article.find_elements_by_class_name('_5rgn')
 
             if (len(body) > 0):
-                print(body[0].text)
+                body_data = body[0].text
 
             if (len(footer) > 0):
                 footer_data = footer[0].text
+                urls = footer[0].find_elements_by_tag_name('a')
                 #print(footer_data)
 
+            print(urls)
+
             fdata = self.Footer_fit(footer_data)
-            DataList = {**{"title": header[0].text}, **{"content": body[0].text}, **fdata}
+            DataList = {**{"title": header[0].text}, **{"content": body_data}, **fdata, **{"URLS": urls}}
 
             posts.append([DataList])
 
@@ -481,6 +609,7 @@ class FacebookBot(webdriver.Chrome):
                 'december': 12
             }[string]
 
+
         postdate = re.search("^([0-9]+ [A-z]+ [0-9]+ at [0-9]+:[0-9]+)", str(data))
         comments = re.search("([0-9]+ Comments)", str(data))
         likes = re.search("([0-9]+ · Like)", str(data))
@@ -494,13 +623,21 @@ class FacebookBot(webdriver.Chrome):
             likes = likes.group().replace(" · Like", "")
         else:
             likes = 0
+        if "at" in data:
+            if postdate != None:
+                date = postdate.group().replace("at ", "").split()
+                dt = datetime(int(date[2]), int(enum_month(date[1])), int(date[0]))
+                timestamp = dt.replace(tzinfo=timezone.utc).timestamp()
+            else:
+                timestamp = 0
 
-        if postdate != None:
-            date = postdate.group().replace("at ", "").split()
-            dt = datetime(int(date[2]), int(enum_month(date[1])), int(date[0]))
-            timestamp = dt.replace(tzinfo=timezone.utc).timestamp()
-        else:
-            timestamp = 0
+        if "hrs" in data:
+            postdate = re.search("^([0-9]+ hrs)", str(data))
+            if postdate != None:
+                gethours = int(postdate.group().replace(" hrs", ""))
+                timestamp = datetime.now().timestamp() - (100*60*gethours)
+            else:
+                timestamp = 0
 
         return {"timestamp": timestamp, "likes": likes, "comments": int(comments)}
 
