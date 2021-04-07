@@ -51,19 +51,19 @@ class post():
     def __init__(self, data):
         self.fbData = data
 
-    def Author(self):
+    def author(self):
         return str(self.fbData['author'])
 
-    def AuthorURL(self):
+    def authorURL(self):
         return str(self.fbData['author_page'])
 
-    def Content(self):
+    def content(self):
         return str(self.fbData['content'])
 
-    def Likes(self):
+    def likes(self):
         return int(self.fbData['likes'])
 
-    def Comments(self):
+    def comments(self):
         return int(self.fbData['comments'])
 
     def storyURL(self):
@@ -79,7 +79,7 @@ class post():
     def timestamp(self):
         return int(self.fbData['timestamp'])
 
-    def data(self):
+    def data(self): #debug Data
         return self.fbData
 
 class Post():
@@ -142,7 +142,7 @@ class FacebookBot(webdriver.Chrome):
 
     myname = None
 
-    def __init__(self, executable_path, Name):
+    def __init__(self, executable_path, Name, debug_mode=False):
         self.myname = Name
         # pathToPhantomJs ="
         """relativePhatomJs = "\\phantomjs.exe"
@@ -156,10 +156,8 @@ class FacebookBot(webdriver.Chrome):
             webdriver.PhantomJS.__init__(self, path, service_args=service_args)
         """
         options = Options()
-        #options.headless = True
+        options.headless = debug_mode
         webdriver.Chrome.__init__(self, executable_path, chrome_options=options)
-
-        #webdriver.PhantomJS.__init__(self, desired_capabilities=dcap)
 
     def get(self, url):
         """The make the driver go to the url but reformat the url if is for facebook page"""
@@ -177,9 +175,13 @@ class FacebookBot(webdriver.Chrome):
         pass_element.send_keys(password)
         pass_element.send_keys(Keys.ENTER)
 
-        if "feature at the moment" in self.find_element_by_xpath('//*[@id="objects_container"]/div[1]/h2').text:
-            print("[Error]: We have been Blocked by facebook!")
-            return False
+        try:
+            if self.find_element_by_xpath('//*[@id="objects_container"]/div[1]/h2').is_displayed():
+                if "feature at the moment" in self.find_element_by_xpath('//*[@id="objects_container"]/div[1]/h2').text:
+                    print("[Error]: We have been Blocked by facebook!")
+                    return False
+        except NoSuchElementException:
+            pass
 
         if self.find_element_by_xpath('//*[@id="root"]/table/tbody/tr/td/div/form').is_displayed():
             self.find_element_by_xpath('//*[@id="root"]/table/tbody/tr/td/div/form/div/input').click()
@@ -330,16 +332,17 @@ class FacebookBot(webdriver.Chrome):
         storyID = re.search("(?!story_fbid=)[0-9]+", str(self.current_url))
 
         result = self.find_element_by_xpath('//*[@id="actions_{}"]/table/tbody/tr/td[1]/a'.format(storyID.group())).get_attribute("aria-pressed")
-        print(result)
 
         if result == "false":
             self.find_element_by_xpath('//*[@id="actions_{}"]/table/tbody/tr/td[1]/a'.format(storyID.group())).click()
+            result = self.find_element_by_xpath('//*[@id="actions_{}"]/table/tbody/tr/td[1]/a'.format(storyID.group())).get_attribute("aria-pressed")
+            if result == "true":
+                return True
         else:
             print("Already Liked")
+            return False
 
-        return True
-
-    def Comment(self, URL, text):
+    def comment(self, URL, text):
         print("Posting a comment..")
         if self.current_url != URL:
             self.get(URL)
@@ -425,8 +428,7 @@ class FacebookBot(webdriver.Chrome):
             tb = self.find_element_by_name("comment_text")
             tb.send_keys(text)
             tb.send_keys(Keys.ENTER)
-            return self.getScrenshotName(
-                "CommentingIn_" + self.title, screenshot, screenshotPath)
+            return self.getScrenshotName("CommentingIn_" + self.title, screenshot, screenshotPath)
         except Exception as e:
             print("Can't comment in ", postUrl, "\n->", e)
 
@@ -591,7 +593,6 @@ class FacebookBot(webdriver.Chrome):
         return posts
 
     def Footer_fit(self, data):
-
         def enum_month(string):
             string = string.lower()
             return {
@@ -608,7 +609,6 @@ class FacebookBot(webdriver.Chrome):
                 'november': 11,
                 'december': 12
             }[string]
-
 
         postdate = re.search("^([0-9]+ [A-z]+ [0-9]+ at [0-9]+:[0-9]+)", str(data))
         comments = re.search("([0-9]+ Comments)", str(data))
@@ -687,53 +687,58 @@ class FacebookBot(webdriver.Chrome):
             except BaseException:
                 pass
         return pList
-    def getAlbums(self,profileURL):
-    	self.get(profileURL+"/photos/?refid=17")
-    	more=bot.find_element_by_class_name("cb")
-    	self.get(more.find_element_by_tag_name("a").get_attribute('href'))
-    	a=bot.find_elements_by_class_name("t")
-    	alb=dict()
-    	for aa in a:
-    		alb[aa.text]=aa.find_element_by_tag_name("a").get_attribute('href')
-    	#print(alb)
-    	return alb
-    def getPhotosFromAlbum(self,albumURL,direction=1, deep=20):# direction 1= next, -1= previus
-    	self.get(albumURL)
-    	first=self.find_element_by_id("thumbnail_area")
-    	self.get(first.find_element_by_tag_name("a").get_attribute('href'))
-    	imagesURL=list()
-    	tags=["bz","by","ca"]
-    	truenames=list()
-    	for n in range(deep):
-    		print(self.title," - photo...",n+1)
-    		try:
-    			for t in tags:
-    				imageurl=self.find_elements_by_class_name(t)[0].get_attribute('href')
-    				if imageurl != None:
-    					#print(imageurl)
-    					break
-    		except:
-    			print(self.current_url)
-    			return
-    		
-    		truename=imageurl.split("?")[0].split("/")[-1]
-    		if truename in truenames:
-    			print("Repeated...")
-    			break
-    		truenames.append(truename)
 
-    		imagesURL.append(imageurl)
-    		td=self.find_elements_by_tag_name("td")
-    		previusURL=td[0].find_element_by_tag_name("a").get_attribute('href')
-    		nextURL=td[1].find_element_by_tag_name("a").get_attribute('href')
-    		#print(nextURL)
-    		#print(previusURL)
-    		if direction==1:
-    			#print("Next")
-    			self.get(nextURL)
-    		elif direcction==-1:
-    			#print("Previous")
-    			self.get(previusURL)
-    		#print(n,"-   ",imageurl)
-    	return imagesURL
+    def getAlbums(self, profileURL):
+        self.get(profileURL+"/photos/?refid=17")
+        more= self.find_element_by_class_name("cb")
+        self.get(more.find_element_by_tag_name("a").get_attribute('href'))
+        a= self.find_elements_by_class_name("t")
+        alb=dict()
+        for aa in a:
+            alb[aa.text]=aa.find_element_by_tag_name("a").get_attribute('href')
+            #print(alb)
+        return alb
+
+    def getPhotosFromAlbum(self,albumURL,direction=1, deep=20):# direction 1= next, -1= previus
+        self.get(albumURL)
+        first = self.find_element_by_id("thumbnail_area")
+        self.get(first.find_element_by_tag_name("a").get_attribute('href'))
+        imagesURL = list()
+        tags=["bz","by","ca"]
+        truenames = list()
+        for n in range(deep):
+            print(self.title," - photo...",n+1)
+        try:
+            for t in tags:
+                imageurl = self.find_elements_by_class_name(t)[0].get_attribute('href')
+                if imageurl != None:
+                    #print(imageurl)
+                    break
+        except:
+            print(self.current_url)
+            return
+
+        truename = imageurl.split("?")[0].split("/")[-1]
+
+        if truename in truenames:
+            print("Repeated...")
+
+        truenames.append(truename)
+
+        imagesURL.append(imageurl)
+        td = self.find_elements_by_tag_name("td")
+        previusURL = td[0].find_element_by_tag_name("a").get_attribute('href')
+        nextURL = td[1].find_element_by_tag_name("a").get_attribute('href')
+
+        #print(nextURL)
+        #print(previusURL)
+
+        if direction==1:
+            #print("Next")
+            self.get(nextURL)
+        elif direction==-1:
+            #print("Previous")
+            self.get(previusURL)
+            #print(n,"-   ",imageurl)
+        return imagesURL
 
